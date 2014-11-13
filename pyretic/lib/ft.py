@@ -6,6 +6,7 @@
 ################################################################################
 
 """Pyretic Library for Fault Tolerance"""
+from multiprocessing import Lock
 from pyretic.lib.corelib import *
 from pyretic.lib.std import *
 
@@ -41,4 +42,17 @@ from pyretic.lib.std import *
 
 class ft(DynamicPolicy):
     def __init__(self):
+    	self.last_topology = None
+    	self.lock = Lock()
         super(ft, self).__init__()
+
+    def handle_link_down(self, link):
+    	print link
+
+    def set_network(self, network):
+    	with self.lock:
+    		if self.last_topology is not None:
+    			diff_topo = Topology.difference(self.last_topology, network.topology)
+    			if diff_topo is not None and len(diff_topo.edges()) == 1:
+	    			self.handle_link_down(diff_topo.edges()[0])
+	    	self.last_topology = network.topology
