@@ -9,5 +9,11 @@ from pyretic.lib.corelib import *
 from pyretic.lib.std import *
 from pyretic.lib.ft import *
 
+def define_operator_policy():
+	default_policy = if_(match(dstmac = EthAddr('00:00:00:00:00:02'), switch = 1), fwd(2), flood())		
+	default_policy = if_(match(dstmac = EthAddr('00:00:00:00:00:02'), switch = 2), fwd(2), default_policy)		
+	default_policy = if_(match(dstmac = EthAddr('00:00:00:00:00:02'), switch = 3), fwd(1), default_policy)		
+	return default_policy
+
 def main():
-	return ft()
+	return ft() + define_operator_policy()

@@ -46,13 +46,13 @@ class ft(DynamicPolicy):
     	self.lock = Lock()
         super(ft, self).__init__()
 
-    def handle_link_down(self, link):
-    	print link
+    def __add__(self, pol):
+    	pass
 
     def set_network(self, network):
     	with self.lock:
     		if self.last_topology is not None:
     			diff_topo = Topology.difference(self.last_topology, network.topology)
     			if diff_topo is not None and len(diff_topo.edges()) == 1:
-	    			self.handle_link_down(diff_topo.edges()[0])
+	    			link = diff_topo.edges()[0]
 	    	self.last_topology = network.topology
