@@ -22,6 +22,7 @@ from pyretic.lib.std import *
 # *make sure that the back up paths we install does not conflict with
 #   the existing policy (normal policy, policy without fault tolerance
 #   policy)
+# *handle dynamic policies
 
 # four modes of fault tolerance #
 # of1.0: proactive; use if switches do not support openFlow 1.3
@@ -42,41 +43,37 @@ from pyretic.lib.std import *
 #   fault tolerant with degree 1
 
 class ft(DynamicPolicy):
-    def __init__(self):
-    	self.last_topology = None
-    	self.backup_policy = None
-    	self.flow_dict = {}
+    def __init__(self, pol):
+    	super(ft, self).__init__()
+    	self.last_topology = None  # stores last topology
+    	self.flow_dict = {} 	   # stores ?
+    	self.user_policy = pol     # stores user policy
     	self.lock = Lock()
-        super(ft, self).__init__()
+        self.policy = pol
 
     def addft(self, flow, A, B):
-    	# may want to use ip
+    	# may want to use ip as well later
     	query = packets(None)
+    	# registers call back for installing back up path when first packet corresponding to
+    	#  the flow comes into the network and hence controller
     	query.register_callback(self.install_backup_paths)
-    	self.flow_dict[(flow, A, B)] = ((flow >> (match(srcmac=A, dstmac=B) + match(srcmac=B, dstmac=A)) >> query), True)
-    	if self.backup_policy:
-    		self.backup_policy = self.backup_policy + (flow >> (match(srcmac=A, dstmac=B) + match(srcmac=B, dstmac=A)) >> query)
-    	else:
-    		self.backup_policy = (flow >> (match(srcmac=A, dstmac=B) + match(srcmac=B, dstmac=A)) >> query)
-
-    def __add__(self, pol):
-    	self.user_policy = pol
-    	return pol + self.backup_policy
+    	final_query = (flow >> (match(srcmac=A, dstmac=B) + match(srcmac=B, dstmac=A)) >> query)
+    	self.flow_dict[(flow, A, B)] = (final_query, True)
+    	self.policy = self.policy + final_query
 
     def install_backup_paths(self, pkt):
-    	# using some state we will install paths
-    	print "inside install back up paths"
-    	new_policy = None
+    	new_policy = self.user_policy
+    	# iterating over all flow and correspoding handlers in the table
     	for k,v in self.flow_dict.items():
-    		print k[0].eval(pkt)
+    		flag = True
+    		for x,y in k[0].map.iteritems():
+    			flag = flag and (pkt[x] == y)
+    		# if back up policy is already not installed
     		if v[1]:
-    			if k[0].eval(pkt):
+    			if flag:
 	    			self.flow_dict[k] = (v[0], False)
 	    		else:
-	    			if new_policy:
-	    				new_policy = new_policy + v[0]
-	    			else:
-	    				new_policy = v[0]
+	    			new_policy = new_policy + v[0]
 	   	self.policy = new_policy
 
     def set_network(self, network):

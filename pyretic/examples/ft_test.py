@@ -16,6 +16,6 @@ def define_operator_policy():
 	return default_policy
 
 def main():
-	ft_ = ft()
+	ft_ = ft(define_operator_policy())
 	ft_.addft(match(dstport=80), EthAddr('00:00:00:00:00:01'), EthAddr('00:00:00:00:00:02'))
-	return ft_ + define_operator_policy()
+	return ft_
