@@ -6,8 +6,11 @@ topology = nx.Graph()
 # topology.add_edges_from([(2,5), (5,3), (2,6), (6,3)])
 # current_path = [2,5,3]
 
-topology.add_edges_from([(1,2), (2,3), (3,4), (4,5), (2,6), (6,4), (1,7), (1,8), (7,8), (4,9), (9,5), (1,6)])
-current_path = [7,1,2,3,4,5]
+# topology.add_edges_from([(1,2), (2,3), (3,4), (4,5), (2,6), (6,4), (1,7), (1,8), (7,8), (4,9), (9,5), (1,6)])
+# current_path = [7,1,2,3,4,5]
+
+topology.add_edges_from([(1,2), (2,3), (3,5), (5,6), (6,7), (2,4), (4,7), (2,9), (9,5), (5,11), (10,11), (1,10)])
+current_path = [1,10,11,5,9,4,7]
 
 # helper functions
 def compute_ft_links(path, current):

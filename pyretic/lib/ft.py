@@ -8,6 +8,7 @@
 """Pyretic Library for Fault Tolerance"""
 from multiprocessing import Lock
 from pyretic.lib.corelib import *
+from pyretic.lib.query import *
 from pyretic.lib.std import *
 
 # Assumptions #
@@ -43,11 +44,24 @@ from pyretic.lib.std import *
 class ft(DynamicPolicy):
     def __init__(self):
     	self.last_topology = None
+    	self.user_policy = None
+    	self.backup_policy = None
     	self.lock = Lock()
         super(ft, self).__init__()
 
+    def addft(self, flow, A, B):
+    	# may want to use ip
+    	query = packets(None)
+    	query.register_callback(self.install_backup_paths)
+    	self.backup_policy = self.backup_policy + (flow >> (match(srcmac=A, dstmac=B) + match(srcmac=B, dstmac=A)) >> query)
+
     def __add__(self, pol):
-    	pass
+    	self.user_policy = pol
+    	return pol + self.backup_policy
+
+    def install_backup_paths(self, pkt):
+    	# using some state we will install paths
+    	print "inside install back up paths"
 
     def set_network(self, network):
     	with self.lock:
