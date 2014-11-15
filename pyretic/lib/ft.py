@@ -44,8 +44,8 @@ from pyretic.lib.std import *
 class ft(DynamicPolicy):
     def __init__(self):
     	self.last_topology = None
-    	self.user_policy = None
     	self.backup_policy = None
+    	self.flow_dict = {}
     	self.lock = Lock()
         super(ft, self).__init__()
 
@@ -53,7 +53,11 @@ class ft(DynamicPolicy):
     	# may want to use ip
     	query = packets(None)
     	query.register_callback(self.install_backup_paths)
-    	self.backup_policy = self.backup_policy + (flow >> (match(srcmac=A, dstmac=B) + match(srcmac=B, dstmac=A)) >> query)
+    	self.flow_dict[(flow, A, B)] = ((flow >> (match(srcmac=A, dstmac=B) + match(srcmac=B, dstmac=A)) >> query), True)
+    	if self.backup_policy:
+    		self.backup_policy = self.backup_policy + (flow >> (match(srcmac=A, dstmac=B) + match(srcmac=B, dstmac=A)) >> query)
+    	else:
+    		self.backup_policy = (flow >> (match(srcmac=A, dstmac=B) + match(srcmac=B, dstmac=A)) >> query)
 
     def __add__(self, pol):
     	self.user_policy = pol
@@ -62,6 +66,18 @@ class ft(DynamicPolicy):
     def install_backup_paths(self, pkt):
     	# using some state we will install paths
     	print "inside install back up paths"
+    	new_policy = None
+    	for k,v in self.flow_dict.items():
+    		print k[0].eval(pkt)
+    		if v[1]:
+    			if k[0].eval(pkt):
+	    			self.flow_dict[k] = (v[0], False)
+	    		else:
+	    			if new_policy:
+	    				new_policy = new_policy + v[0]
+	    			else:
+	    				new_policy = v[0]
+	   	self.policy = new_policy
 
     def set_network(self, network):
     	with self.lock:
