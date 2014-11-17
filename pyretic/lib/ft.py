@@ -85,8 +85,9 @@ class ft(DynamicPolicy):
                         if current_path == []:
                             return
                         else:
-                            #
-
+                            # now we have the current path and topology, we
+                            #  compute back up paths
+                            self.compute_backup_path(current_path)
                     # removing handlers for the packet
                     if flag:
                         self.flow_dict[key] = (value[0], False) + value[2:]
@@ -118,15 +119,24 @@ class ft(DynamicPolicy):
                     new_pkt = list(cpkts)[0]
                 else:
                     return []
-
                 next_switch = self.last_topology.node[pkt["switch"]]["ports"][new_pkt["outport"]].linked_to
+                in_port = int(str(next_switch).split('[')[1].split(']')[0])
+                next_switch = int(str(next_switch).split('[')[0])
                 if next_switch is None:
                     return []
                 current_path.append(pkt["switch"])
-                new_pkt.modifymany({"switch":next_switch})
+                new_pkt = new_pkt.modify(switch=next_switch)
+                new_pkt = new_pkt.modify(inport=in_port)
         except:
             return []
+        current_path.append(goal)
+        return current_path
 
+    #! hard coded
+    def compute_backup_path(self, current_path):
+        [1, 2, 3, 4]
+
+    #! does not work for now
     def compute_ft_links(self, path, current):
         to_del_index = []
         for i,n1 in enumerate(path):
@@ -155,5 +165,3 @@ class ft(DynamicPolicy):
 
     # if len(all_ft_links) != (len(current_path)-1):
     #   raise Exception("not possible!")
-
-    # break
