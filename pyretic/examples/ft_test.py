@@ -1,6 +1,6 @@
 ################################################################################
 # SDN course project, CS8803-SDN, Georgia Tech                                 #
-# authors: Aman Mangal(amanmangal@gatech.edu), Vaibhav Malkani, Jessie McGarry #
+# authors: Aman Mangal(amanmangal@gatech.edu), Vaibhav Malkani, Pragya Agarwal #
 ################################################################################
 # Free to use as long as the authors are notified                              #
 ################################################################################
