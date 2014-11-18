@@ -132,22 +132,25 @@ class ft(DynamicPolicy):
         current_path.append(goal)
         return current_path
 
-    #! hard coded
     def compute_backup_path(self, current_path):
-        [1, 2, 3, 4]
+        proactive_policies = dict()
+        reactive_policies = dict()
 
-    #! does not work for now
     def compute_ft_links(self, path, current):
-        to_del_index = []
-        for i,n1 in enumerate(path):
-          for j,n2 in enumerate(current):
-              if n1 == n2:
-                  if i+1<len(path) and (j+1)<len(current) and path[i+1]==current[j+1]:
-                      to_del_index.append(j)
-        return [val for i,val in enumerate(current[:-1]) if i not in to_del_index]
+        link_path = [(path[i], path[i+1]) for i in range(len(path)-1)]
+        link_current = [(current[i], current[i+1]) for i in range(len(current)-1)]
+        result = []
 
-    # proactive_policies = v[2]
-    # reactive_policies = v[3]
+        for clink in link_current:
+            flag = true
+            for link in link_path:
+                if link == clink or link == clink[::-1]:
+                    flag = false
+                    break
+            if flag:
+                result.append(clink)
+        return result
+
     # all_paths = nx.all_simple_paths(network.topology, source=current_path[0], target=current_path[-1])
     # sorted_paths = sorted(all_paths, cmp=lambda x,y:len(x)-len(y))
     # all_ft_links = set()
