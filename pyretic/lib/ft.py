@@ -11,6 +11,7 @@ from pyretic.lib.corelib import *
 from pyretic.lib.query import *
 from pyretic.lib.std import *
 import networkx as nx
+import warnings as wn
 
 # Assumptions #
 # *assume only one link fails at a time, we don't optimize for multiple link
@@ -90,7 +91,7 @@ class ft(DynamicPolicy):
                             #  them. we also store them along with the rest
                             #  the entries which we install after a link failure
                             self.compute_backup_path(current_path)
-                            #! continue here
+                            #! continue here (make sure all tules are installed)
                     # removing handlers for the packet
                     if flag:
                         self.flow_dict[key] = (value[0], False) + value[2:]
@@ -104,6 +105,8 @@ class ft(DynamicPolicy):
                 diff_topo = Topology.difference(self.last_topology, network.topology)
                 if diff_topo is not None and len(diff_topo.edges()) == 1:
                     failed_link = diff_topo.edges()[0]
+                    print "link {} has failed".format(failed_link)
+                    #! install reactive flow tables entries
                 elif diff_topo is None:
                     print "the topology didn't change!"
                 else:
@@ -135,77 +138,6 @@ class ft(DynamicPolicy):
         current_path.append(goal)
         return current_path
 
-    # Three optimization goals:
-    #  *minimum conflicting rules so that we have to install minimum rules after
-    #    a link fails
-    #  *minimum total number of rules which are installed to make paths fault tolerant
-    #  *backup paths should be as short as possible
-    def compute_backup_path(self, path):
-        proactive_policies = dict()
-        reactive_policies = dict()
-        pathg = nx.all_simple_paths(self.last_topology, source=path[0], target=path[-1])
-
-        # finding all paths covering all the links in the path
-        find_covering_path(self)
-        # i = 0
-        # while len(all_ft_links) < (len(current_path)-1) and i < len(sorted_paths):
-        #   path = sorted_paths[i]
-        #   i = i + 1
-        #   if path != current_path:
-        #       ft_links = compute_ft_links(path, current_path)
-        #       if ft_links != []:
-        #           l = len(all_ft_links)
-        #           all_ft_links.update(ft_links)
-        #           if l != len(all_ft_links):
-        #               pass
-
-        # if len(all_ft_links) != (len(current_path)-1):
-        #   raise Exception("not possible!")
-
-    def find_covering_paths(self, path_generator, current_path):
-        total_link_count = len(current_path) - 1
-        optimal_path_count = compute_optimal_path_count(self, current_path)
-        total_tried_paths = 0
-        may_be_more_paths = False
-
-        ft_link = set()
-        path_set = []
-        for path in path_generator:
-            if len(ft_links) == total_link_count:
-                break
-            if len(ft_links) > total_link_count:
-                raise Exception("NOT POSSIBLE")
-
-            total_tried_paths = total_tried_paths + 1
-            if total_tried_paths == optimal_path_count:
-                may_be_more_paths = True;
-                break;
-
-        # finding paths by simulating link failures
-        if len(ft_links) < total_link_count and may_be_more_paths:
-            all_links = [(current_path[i], current_path[i+1]) if current_path[i]<current_path[i+1] \
-                else (current_path[i+1], current_path[i]) for i in range(len(current_path)-1)]
-            all_links.difference_update(ft_links)
-            for link in all_links:
-                graph = self.last_topology
-                graph.remove_edge(link)
-                new_path = nx.shortest_path(graph, source, goal)
-                path_set.append(new_path)
-
-        # removing redundant links
-        ft_links = set()
-        path_set_copy = []
-        for (path, links) in reversed(path_set):
-            old_length = len(ft_links)
-            ft_links.update(links)
-            if len(ft_links) != old_length:
-                path_set_copy.append(path)
-
-        return path_set_copy
-
-    def compute_optimal_path_count(self, current_path):
-        pass
-
     # with the convention of returning links with smaller node value first
     def compute_ft_links(self, path, current):
         link_path = [(path[i], path[i+1]) if path[i]<path[i+1] \
@@ -223,3 +155,69 @@ class ft(DynamicPolicy):
             if flag:
                 result.append(clink)
         return result
+
+    def find_covering_paths(self, current_path):
+        total_link_count = len(current_path) - 1
+        optimal_path_count = self.compute_optimal_path_count(current_path)
+        total_tried_paths = 0
+        may_be_more_paths = False
+
+        ft_links = set()
+        path_list = []
+        pathg = nx.all_simple_paths(self.last_topology, source=current_path[0], target=current_path[-1])
+        for path in pathg:
+            if len(ft_links) == total_link_count:
+                break
+            if len(ft_links) > total_link_count:
+                raise Exception("NOT POSSIBLE")
+
+            old_length = len(ft_links)
+            flinks = self.compute_ft_links(path, current_path)
+            ft_links.update(flinks)
+            if len(ft_links) != old_length:
+                path_list.append((path, flinks))
+
+            total_tried_paths = total_tried_paths + 1
+            if total_tried_paths == optimal_path_count:
+                may_be_more_paths = True;
+                break;
+
+        # finding paths by simulating link failures
+        if len(ft_links) < total_link_count and may_be_more_paths:
+            all_links = [(current_path[i], current_path[i+1]) if current_path[i]<current_path[i+1] \
+                else (current_path[i+1], current_path[i]) for i in range(len(current_path)-1)]
+            all_links.difference_update(ft_links)
+            for link in all_links:
+                graph = self.last_topology
+                graph.remove_edge(link)
+                new_path = nx.shortest_path(graph, current_path[0], current_path[1])
+                path_list.append((new_path, self.compute_ft_links(new_path, current_path)))
+
+        if len(ft_links) < total_link_count:
+            wn.warn("All links in the path {} cannot be made fault tolerant".format(current_path))
+
+        # removing redundant links
+        ft_links = set()
+        path_list_copy = []
+        for (path, links) in reversed(path_list):
+            old_length = len(ft_links)
+            ft_links.update(links)
+            if len(ft_links) != old_length:
+                path_list_copy.append(path)
+
+        return path_list_copy
+
+    # Three optimization goals:
+    #  *minimum conflicting rules so that we have to install minimum rules after
+    #    a link fails
+    #  *minimum total number of rules which are installed to make paths fault tolerant
+    #  *backup paths should be as short as possible
+    def compute_backup_path(self, current_path):
+        proactive_policies = dict()
+        reactive_policies = dict()
+
+        # finding all paths covering all the links in the path
+        print self.find_covering_paths(current_path)
+
+    def compute_optimal_path_count(self, current_path):
+        print "hello"
