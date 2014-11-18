@@ -34,16 +34,19 @@ import warnings as wn
 # *specify list of links preferred to use as back up paths (global)
 
 # Future work #
-#  *ft as part of pyretic to make it more efficient
+#  *ft as part of pyretic to make it more efficient, we know difference
+#    but still we have to compute the whole policy and pyretic computes
+#    the difference again
 #  *better algorithm
 
 class ft(DynamicPolicy):
     def __init__(self, pol):
         super(ft, self).__init__()
-        self.last_topology = None  # stores last topology
-        self.flow_dict = {}        # stores everything related to ft
-                                   # (flow, Flag, proactive, reactive)
-        self.user_policy = pol     # stores user policy
+        self.last_topology = None     # stores last topology
+        self.flow_dict = {}           # stores everything related to ft
+                                      # (flow, pFlag, proactive, reactive)
+        self.user_policy = pol        # stores user policy
+        self.current_failures = set() # stores all currently failed links
         self.lock = Lock()
         self.policy = self.user_policy
 
@@ -97,13 +100,23 @@ class ft(DynamicPolicy):
                             #  them. we also store them along with the rest
                             #  the entries which we install after a link failure
                             self.compute_backup_path(current_path, key[0])
-                            #! continue here (make sure all rules are installed)
-                            print self.flow_dict
+                            # install proactive rules
+                            for link,pols in value[3].items():
+                                new_policy = new_policy + pols
                     # removing handlers for the packet
                     if flag:
                         self.flow_dict[key] = (value[0], False) + value[2:]
                     else:
                         new_policy = new_policy + value[0]
+                # make sure proactive policies are there
+                else:
+                    for link,pols in value[3].items():
+                        new_policy = new_policy + pols
+
+                # reactive policies
+                for link,pols in value[2].items():
+                    if link in self.current_failures:
+                        new_policy = new_policy + pols
             self.policy = new_policy
 
     def set_network(self, network):
@@ -113,7 +126,14 @@ class ft(DynamicPolicy):
                 if diff_topo is not None and len(diff_topo.edges()) == 1:
                     failed_link = diff_topo.edges()[0]
                     print "link {} has failed".format(failed_link)
-                    #! install reactive flow tables entries
+                    if failed_link not in self.current_failures:
+                        self.current_failures.update([tuple(sorted(failed_link))])
+
+                        # install reactive flow tables entries
+                        for key,value in self.flow_dict.items():
+                            for link,pols in value[2]:
+                                if link == failed_link or link == failed_link[::-1]:
+                                    self.policy = self.policy + pols
                 elif diff_topo is None:
                     print "the topology didn't change!"
                 else:
@@ -275,19 +295,19 @@ class ft(DynamicPolicy):
                         # conflicts, reactive
                         for link in links:
                             if link in reactive_policies:
-                                reactive_policies[link].update([rule])
+                                reactive_policies[link] = reactive_policies[link] + rule
                             else:
-                                reactive_policies[link] = set([rule])
+                                reactive_policies[link] = rule
                     else:
                         # no conflicts, proactive
                         for link in links:
                             if link in proactive_policies:
-                                proactive_policies[link].update([rule])
+                                proactive_policies[link] = proactive_policies[link] + rule
                             else:
-                                proactive_policies[link] = set([rule])
+                                proactive_policies[link] = rule
 
         (a,b,c,d) = self.flow_dict[(flow, current_path[1], current_path[-2])]
-        self.flow_dict[(flow, current_path[1], current_path[-2])] = (a,b,proactive_policies, reactive_policies)
+        self.flow_dict[(flow, current_path[1], current_path[-2])] = (a,b,reactive_policies,proactive_policies)
 
     #! find a proof for this
     def compute_optimal_path_count(self, current_path):
