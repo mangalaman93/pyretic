@@ -144,7 +144,9 @@ class ft(DynamicPolicy):
         proactive_policies = dict()
         reactive_policies = dict()
         pathg = nx.all_simple_paths(self.last_topology, source=path[0], target=path[-1])
-        # all_ft_links = set()
+
+        # finding all paths covering all the links in the path
+        find_covering_path(self)
         # i = 0
         # while len(all_ft_links) < (len(current_path)-1) and i < len(sorted_paths):
         #   path = sorted_paths[i]
@@ -160,9 +162,56 @@ class ft(DynamicPolicy):
         # if len(all_ft_links) != (len(current_path)-1):
         #   raise Exception("not possible!")
 
+    def find_covering_paths(self, path_generator, current_path):
+        total_link_count = len(current_path) - 1
+        optimal_path_count = compute_optimal_path_count(self, current_path)
+        total_tried_paths = 0
+        may_be_more_paths = False
+
+        ft_link = set()
+        path_set = []
+        for path in path_generator:
+            if len(ft_links) == total_link_count:
+                break
+            if len(ft_links) > total_link_count:
+                raise Exception("NOT POSSIBLE")
+
+            total_tried_paths = total_tried_paths + 1
+            if total_tried_paths == optimal_path_count:
+                may_be_more_paths = True;
+                break;
+
+        # finding paths by simulating link failures
+        if len(ft_links) < total_link_count and may_be_more_paths:
+            all_links = [(current_path[i], current_path[i+1]) if current_path[i]<current_path[i+1] \
+                else (current_path[i+1], current_path[i]) for i in range(len(current_path)-1)]
+            all_links.difference_update(ft_links)
+            for link in all_links:
+                graph = self.last_topology
+                graph.remove_edge(link)
+                new_path = nx.shortest_path(graph, source, goal)
+                path_set.append(new_path)
+
+        # removing redundant links
+        ft_links = set()
+        path_set_copy = []
+        for (path, links) in reversed(path_set):
+            old_length = len(ft_links)
+            ft_links.update(links)
+            if len(ft_links) != old_length:
+                path_set_copy.append(path)
+
+        return path_set_copy
+
+    def compute_optimal_path_count(self, current_path):
+        pass
+
+    # with the convention of returning links with smaller node value first
     def compute_ft_links(self, path, current):
-        link_path = [(path[i], path[i+1]) for i in range(len(path)-1)]
-        link_current = [(current[i], current[i+1]) for i in range(len(current)-1)]
+        link_path = [(path[i], path[i+1]) if path[i]<path[i+1] \
+            else (path[i+1], path[i]) for i in range(len(path)-1)]
+        link_current = [(current[i], current[i+1]) if current[i]<current[i+1] \
+            else (current[i+1], current[i]) for i in range(len(current)-1)]
         result = []
 
         for clink in link_current:
