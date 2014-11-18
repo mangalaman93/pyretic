@@ -10,13 +10,13 @@ from multiprocessing import Lock
 from pyretic.lib.corelib import *
 from pyretic.lib.query import *
 from pyretic.lib.std import *
+import networkx as nx
 
 # Assumptions #
-# *assume only one link fails at a time, we don't optmize for multiple link
+# *assume only one link fails at a time, we don't optimize for multiple link
 #   failures at a time as of now
-# *we only make switch attached to host A TO switch attached to host B path
-#   fault tolerant. Also we assume that one host is only attached to one
-#   switch only, not more than one switched
+# *assume that all the flows given by the user are independent of each other
+#   while calling addft function (in each call to addft)
 
 # Caution #
 # *remember to match incoming direction in the rule to avoid loops
@@ -65,7 +65,7 @@ class ft(DynamicPolicy):
     def install_backup_paths(self, pkt):
         with self.lock:
             new_policy = self.user_policy
-            # iterating over all flow and correspoding handlers in the table
+            # iterating over all flow and corresponding handlers in the table
             # key=(flow, source, goal) & value=(policy, flag, reactive_pol, proactive_pol)
             # flag => whether back up paths for the flow are installed already
             for key,value in self.flow_dict.items():
@@ -86,8 +86,11 @@ class ft(DynamicPolicy):
                             return
                         else:
                             # now we have the current path and topology, we
-                            #  compute back up paths
+                            #  compute back up paths and then install some of
+                            #  them. we also store them along with the rest
+                            #  the entries which we install after a link failure
                             self.compute_backup_path(current_path)
+                            #! continue here
                     # removing handlers for the packet
                     if flag:
                         self.flow_dict[key] = (value[0], False) + value[2:]
@@ -132,9 +135,30 @@ class ft(DynamicPolicy):
         current_path.append(goal)
         return current_path
 
-    def compute_backup_path(self, current_path):
+    # Three optimization goals:
+    #  *minimum conflicting rules so that we have to install minimum rules after
+    #    a link fails
+    #  *minimum total number of rules which are installed to make paths fault tolerant
+    #  *backup paths should be as short as possible
+    def compute_backup_path(self, path):
         proactive_policies = dict()
         reactive_policies = dict()
+        pathg = nx.all_simple_paths(self.last_topology, source=path[0], target=path[-1])
+        # all_ft_links = set()
+        # i = 0
+        # while len(all_ft_links) < (len(current_path)-1) and i < len(sorted_paths):
+        #   path = sorted_paths[i]
+        #   i = i + 1
+        #   if path != current_path:
+        #       ft_links = compute_ft_links(path, current_path)
+        #       if ft_links != []:
+        #           l = len(all_ft_links)
+        #           all_ft_links.update(ft_links)
+        #           if l != len(all_ft_links):
+        #               pass
+
+        # if len(all_ft_links) != (len(current_path)-1):
+        #   raise Exception("not possible!")
 
     def compute_ft_links(self, path, current):
         link_path = [(path[i], path[i+1]) for i in range(len(path)-1)]
@@ -150,21 +174,3 @@ class ft(DynamicPolicy):
             if flag:
                 result.append(clink)
         return result
-
-    # all_paths = nx.all_simple_paths(network.topology, source=current_path[0], target=current_path[-1])
-    # sorted_paths = sorted(all_paths, cmp=lambda x,y:len(x)-len(y))
-    # all_ft_links = set()
-    # i = 0
-    # while len(all_ft_links) < (len(current_path)-1) and i < len(sorted_paths):
-    #   path = sorted_paths[i]
-    #   i = i + 1
-    #   if path != current_path:
-    #       ft_links = compute_ft_links(path, current_path)
-    #       if ft_links != []:
-    #           l = len(all_ft_links)
-    #           all_ft_links.update(ft_links)
-    #           if l != len(all_ft_links):
-    #               pass
-
-    # if len(all_ft_links) != (len(current_path)-1):
-    #   raise Exception("not possible!")
