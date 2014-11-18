@@ -42,6 +42,7 @@ class ft(DynamicPolicy):
         super(ft, self).__init__()
         self.last_topology = None  # stores last topology
         self.flow_dict = {}        # stores everything related to ft
+                                   # (flow, Flag, proactive, reactive)
         self.user_policy = pol     # stores user policy
         self.lock = Lock()
         self.policy = self.user_policy
@@ -95,8 +96,9 @@ class ft(DynamicPolicy):
                             #  compute back up paths and then install some of
                             #  them. we also store them along with the rest
                             #  the entries which we install after a link failure
-                            self.compute_backup_path(current_path)
+                            self.compute_backup_path(current_path, key[0])
                             #! continue here (make sure all rules are installed)
+                            print self.flow_dict
                     # removing handlers for the packet
                     if flag:
                         self.flow_dict[key] = (value[0], False) + value[2:]
@@ -195,7 +197,7 @@ class ft(DynamicPolicy):
             for link in all_links:
                 graph = self.last_topology
                 graph.remove_edge(link)
-                new_path = nx.shortest_path(graph, current_path[0], current_path[1])
+                new_path = nx.shortest_path(graph, current_path[0], current_path[-1])
                 path_list.append((new_path, self.compute_ft_links(new_path, current_path)))
 
         if len(ft_links) < total_link_count:
@@ -217,14 +219,13 @@ class ft(DynamicPolicy):
     #    a link fails
     #  *minimum total number of rules which are installed to make paths fault tolerant
     #  *backup paths should be as short as possible
-    def compute_backup_path(self, current_path):
-        proactive_policies = dict()
-        reactive_policies = dict()
-
+    def compute_backup_path(self, current_path, flow):
+        proactive_policies = {}
+        reactive_policies = {}
         # finding all paths covering all the links in the path
         covering_paths = self.find_covering_paths(current_path)
 
-        # conflict detection
+        # conflict detection, populating the data structure
         # conflict => same incoming but different outgoing port
         # data structure: (current switch, incoming switch) -> {outgoing switch: set link}
         rules = {}
@@ -242,12 +243,51 @@ class ft(DynamicPolicy):
                 else:
                     rules[path[i], path[i-1]]= {path[i+1]: set(links)}
 
-        print rules
-        # for (cw, iw),d in rules.iteritems():
-        #     if len(d) > 1:
-        #         # conflicts, reactive
-        #     else:
-        #         # no conflicts, proactive
+        # storing rules
+        for (cw, iw),d in rules.iteritems():
+            inport = 0
+            outport = 0
+            # conflicts, reactive
+            for ow,links in d.items():
+                # when current switch is last switch
+                if cw == current_path[-2]:
+                    continue
+                if links:
+                    rule = None
+                    for port,value in self.last_topology.node[cw]['ports'].items():
+                        # do not loop for None
+                        if value.linked_to:
+                            next_switch = int(str(value.linked_to).split('[')[0])
+                            if next_switch == ow:
+                                outport = port
+                            elif next_switch == iw:
+                                inport = port
+                    # when current switch is initial switch
+                    if iw < 0:
+                        if current_path[1] != cw:
+                            raise Exception("NOT POSSIBLE")
+                        rule = flow >> match(switch=cw) >> fwd(outport)
+                    else:
+                        rule = flow >> match(switch=cw, inport=inport) >> fwd(outport)
+                        rule = rule + (flow >> match(switch=cw, inport=outport) >> fwd(inport))
+
+                    if len(d) > 1:
+                        # conflicts, reactive
+                        for link in links:
+                            if link in reactive_policies:
+                                reactive_policies[link].update([rule])
+                            else:
+                                reactive_policies[link] = set([rule])
+                    else:
+                        # no conflicts, proactive
+                        for link in links:
+                            if link in proactive_policies:
+                                proactive_policies[link].update([rule])
+                            else:
+                                proactive_policies[link] = set([rule])
+
+        (a,b,c,d) = self.flow_dict[(flow, current_path[1], current_path[-2])]
+        self.flow_dict[(flow, current_path[1], current_path[-2])] = (a,b,proactive_policies, reactive_policies)
 
     #! find a proof for this
     def compute_optimal_path_count(self, current_path):
