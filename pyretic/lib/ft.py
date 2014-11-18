@@ -10,6 +10,7 @@ from multiprocessing import Lock
 from pyretic.lib.corelib import *
 from pyretic.lib.query import *
 from pyretic.lib.std import *
+from math import *
 import networkx as nx
 import warnings as wn
 
@@ -31,6 +32,10 @@ import warnings as wn
 # How to specify fault tolerance #
 # *specify list of links not to use as back up paths (global)
 # *specify list of links preferred to use as back up paths (global)
+
+# Future work #
+#  *ft as part of pyretic to make it more efficient
+#  *better algorithm
 
 class ft(DynamicPolicy):
     def __init__(self, pol):
@@ -91,7 +96,7 @@ class ft(DynamicPolicy):
                             #  them. we also store them along with the rest
                             #  the entries which we install after a link failure
                             self.compute_backup_path(current_path)
-                            #! continue here (make sure all tules are installed)
+                            #! continue here (make sure all rules are installed)
                     # removing handlers for the packet
                     if flag:
                         self.flow_dict[key] = (value[0], False) + value[2:]
@@ -110,7 +115,7 @@ class ft(DynamicPolicy):
                 elif diff_topo is None:
                     print "the topology didn't change!"
                 else:
-                    print "we don't handle this case as of now"
+                    wn.warn("we don't handle this case as of now")
             self.last_topology = network.topology
 
     # helper functions
@@ -147,10 +152,10 @@ class ft(DynamicPolicy):
         result = []
 
         for clink in link_current:
-            flag = true
+            flag = True
             for link in link_path:
                 if link == clink or link == clink[::-1]:
-                    flag = false
+                    flag = False
                     break
             if flag:
                 result.append(clink)
@@ -203,7 +208,7 @@ class ft(DynamicPolicy):
             old_length = len(ft_links)
             ft_links.update(links)
             if len(ft_links) != old_length:
-                path_list_copy.append(path)
+                path_list_copy.append((path, links))
 
         return path_list_copy
 
@@ -217,7 +222,34 @@ class ft(DynamicPolicy):
         reactive_policies = dict()
 
         # finding all paths covering all the links in the path
-        print self.find_covering_paths(current_path)
+        covering_paths = self.find_covering_paths(current_path)
 
+        # conflict detection
+        # conflict => same incoming but different outgoing port
+        # data structure: (current switch, incoming switch) -> {outgoing switch: set link}
+        rules = {}
+        covering_paths.insert(0, (current_path, []))
+        for (path, links) in covering_paths:
+            # -1 > A & -2 > B (end hosts)
+            path.insert(0, -1)
+            path.append(-2)
+            for i in range(1, len(path)-1):
+                if (path[i], path[i-1]) in rules:
+                    if path[i+1] in rules[path[i], path[i-1]]:
+                        rules[path[i], path[i-1]][path[i+1]].update(links)
+                    else:
+                        rules[path[i], path[i-1]][path[i+1]] = set(links)
+                else:
+                    rules[path[i], path[i-1]]= {path[i+1]: set(links)}
+
+        print rules
+        # for (cw, iw),d in rules.iteritems():
+        #     if len(d) > 1:
+        #         # conflicts, reactive
+        #     else:
+        #         # no conflicts, proactive
+
+    #! find a proof for this
     def compute_optimal_path_count(self, current_path):
-        print "hello"
+        n = len(current_path)
+        return int(n * log(n))
