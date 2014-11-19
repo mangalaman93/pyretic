@@ -99,7 +99,7 @@ class ft(DynamicPolicy):
 
                     # if pkt corresponds to current flow
                     if flag:
-                        current_path = self.compute_current_path(pkt, key[2])
+                        current_path = self.compute_current_path(pkt, key[1], key[2])
                         if current_path:
                             value = self.compute_backup_path(current_path, key[0])
                             # removing handlers for the packet
@@ -129,10 +129,13 @@ class ft(DynamicPolicy):
             self.update_policy()
 
     # helper functions
-    def compute_current_path(self, pkt, goal):
+    def compute_current_path(self, pkt, source, goal):
+        # if packet does not come from source
+        new_pkt = pkt
+        if pkt['switch'] != source:
+            new_pkt = new_pkt.modify(switch=source)
+        current_path = []
         try:
-            current_path = []
-            new_pkt = pkt
             while new_pkt["switch"]!=goal:
                 cpkts = self.user_policy.eval(new_pkt)
                 if len(cpkts) == 1:
