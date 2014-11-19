@@ -17,5 +17,5 @@ def define_operator_policy():
 
 def main():
 	ft_ = ft(define_operator_policy())
-	ft_.addft(match(dstport=80,srcmac=EthAddr('00:00:00:00:00:01'),dstmac=EthAddr('00:00:00:00:00:02')), 1, 3)
+	ft_.addft(match(dstport=80), 1, 3)
 	return ft_
