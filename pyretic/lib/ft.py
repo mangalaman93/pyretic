@@ -138,7 +138,7 @@ class ft(DynamicPolicy):
         try:
             while new_pkt["switch"]!=goal:
                 cpkts = self.user_policy.eval(new_pkt)
-                if len(cpkts) == 1:
+                if len(cpkts) >= 1:
                     pkt = new_pkt
                     new_pkt = list(cpkts)[0]
                 else:
