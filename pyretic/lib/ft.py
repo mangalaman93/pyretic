@@ -76,7 +76,7 @@ class ft(DynamicPolicy):
         with self.lock:
             new_policy = self.user_policy
             # iterating over all flow and corresponding handlers in the table
-            # key=(flow, source, goal) & value=(policy, flag, reactive_pol, proactive_pol)
+            # key=(flow, source, goal) & value=(policy, flag, proactive_pol, reactive_pol)
             # flag => whether back up paths for the flow are installed already
             for key,value in self.flow_dict.items():
                 # if back up policy is already not installed
@@ -92,29 +92,24 @@ class ft(DynamicPolicy):
                     if flag:
                         current_path = self.compute_current_path(pkt, key[2])
                         # if unable to compute backup path => skip
-                        if current_path == []:
-                            return
-                        else:
+                        if current_path != []:
                             # now we have the current path and topology, we
                             #  compute back up paths and then install some of
                             #  them. we also store them along with the rest
                             #  the entries which we install after a link failure
-                            self.compute_backup_path(current_path, key[0])
+                            value = self.compute_backup_path(current_path, key[0])
                             # install proactive rules
-                            for link,pols in value[3].items():
-                                new_policy = new_policy + pols
-                    # removing handlers for the packet
-                    if flag:
-                        self.flow_dict[key] = (value[0], False) + value[2:]
+                            new_policy = new_policy + value[2]
+                            # removing handlers for the packet
+                            self.flow_dict[key] = (value[0], False) + value[2:]
                     else:
                         new_policy = new_policy + value[0]
                 # make sure proactive policies are there
                 else:
-                    for link,pols in value[3].items():
-                        new_policy = new_policy + pols
+                    new_policy = new_policy + value[2]
 
                 # reactive policies
-                for link,pols in value[2].items():
+                for link,pols in value[3].items():
                     if link in self.current_failures:
                         new_policy = new_policy + pols
             self.policy = new_policy
@@ -131,11 +126,11 @@ class ft(DynamicPolicy):
 
                         # install reactive flow tables entries
                         for key,value in self.flow_dict.items():
-                            for link,pols in value[2]:
+                            for link,pols in value[3].items():
                                 if link == failed_link or link == failed_link[::-1]:
                                     self.policy = self.policy + pols
                 elif diff_topo is None:
-                    print "the topology didn't change!"
+                    print "no link failed in this case"
                 else:
                     wn.warn("we don't handle this case as of now")
             self.last_topology = network.topology
@@ -240,7 +235,7 @@ class ft(DynamicPolicy):
     #  *minimum total number of rules which are installed to make paths fault tolerant
     #  *backup paths should be as short as possible
     def compute_backup_path(self, current_path, flow):
-        proactive_policies = {}
+        proactive_policies = None
         reactive_policies = {}
         # finding all paths covering all the links in the path
         covering_paths = self.find_covering_paths(current_path)
@@ -300,14 +295,15 @@ class ft(DynamicPolicy):
                                 reactive_policies[link] = rule
                     else:
                         # no conflicts, proactive
-                        for link in links:
-                            if link in proactive_policies:
-                                proactive_policies[link] = proactive_policies[link] + rule
-                            else:
-                                proactive_policies[link] = rule
+                        if proactive_policies:
+                            proactive_policies = proactive_policies + rule
+                        else:
+                            proactive_policies = rule
 
         (a,b,c,d) = self.flow_dict[(flow, current_path[1], current_path[-2])]
-        self.flow_dict[(flow, current_path[1], current_path[-2])] = (a,b,reactive_policies,proactive_policies)
+        result = (a, b, proactive_policies, reactive_policies)
+        self.flow_dict[(flow, current_path[1], current_path[-2])] = result
+        return result
 
     #! find a proof for this
     def compute_optimal_path_count(self, current_path):
