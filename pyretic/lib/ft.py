@@ -10,77 +10,86 @@ from multiprocessing import Lock
 from pyretic.lib.corelib import *
 from pyretic.lib.query import *
 from pyretic.lib.std import *
+
 from math import *
 import networkx as nx
 import warnings as wn
 
 # Assumptions #
-# *assume only one link fails at a time, we don't optimize for multiple link
-#   failures at a time as of now
-# *assume that all the flows given by the user are independent of each other
-#   while calling addft function (in each call to addft)
+# *assume only one link fails at a time, we don't optimize for multiple
+#   link failures at a time as of now
+# *assume that all the flows given by the user are independent of each
+#   other while calling addft function (in each call to addft)
 
 # Caution #
-# *remember to match incoming direction in the rule to avoid loops
 # *^what about the rules already installed, they should not have
 #  incoming node as part of the rules itself
-# *make sure that the back up paths we install do not conflict with
-#   the existing policy (normal policy, policy without fault tolerance
-#   policy)
 # *handle dynamic policies
-
-# How to specify fault tolerance #
-# *specify list of links not to use as back up paths (global)
-# *specify list of links preferred to use as back up paths (global)
 
 # Future work #
 #  *ft as part of pyretic to make it more efficient, we know difference
 #    but still we have to compute the whole policy and pyretic computes
 #    the difference again
 #  *better algorithm
+#  *no modification support
+#  *preferred backup path support
+#    *specify list of links not to use as back up paths (global)
+#    *specify list of links preferred to use as back up paths (global)
 
 class ft(DynamicPolicy):
     def __init__(self, pol):
         super(ft, self).__init__()
-        self.last_topology = None     # stores last topology
+        self.ftopology = None         # stores current topology
         self.flow_dict = {}           # stores everything related to ft
-                                      # (flow, pFlag, proactive, reactive)
+                                      # (flag, flow, proactive, reactive)
         self.user_policy = pol        # stores user policy
         self.current_failures = set() # stores all currently failed links
         self.lock = Lock()
         self.policy = self.user_policy
 
-    def addft(self, Flow, Source, Goal):
-        if not isinstance(Flow, match):
+    def addft(self, flow, source, goal):
+        if not isinstance(flow, match):
             raise Exception("unknown flow type in addft function call")
 
-        if isinstance(Source, int):
-            matchA = match(switch=Source)
+        if isinstance(source, int):
+            matchA = match(switch=source)
         else:
-            raise Exception("Error: unknown node type in addft function call")
+            raise Exception("unknown node type in addft function call")
 
-        if isinstance(Goal, int):
-            matchB = match(switch=Goal)
+        if isinstance(goal, int):
+            matchB = match(switch=goal)
         else:
-            raise Exception("Error: unknown node type in addft function call")
+            raise Exception("unknown node type in addft function call")
 
-        # registers call back for installing back up path when first packet corresponding to
-        #  the flow comes into the network and hence to controller
+        # registers call back for installing back up path when first
+        #  packet corresponding to flow comes into the network
         query = packets(None)
         query.register_callback(self.install_backup_paths)
-        filtered_query = Flow >> (matchA + matchB) >> query
-        self.flow_dict[(Flow, Source, Goal)] = (filtered_query, True, dict(), dict())
-        self.policy = self.policy + filtered_query
+        filtered_query = flow >> (matchA + matchB) >> query
+        key = (flow, source, goal)
+        value = (True, filtered_query, set(), dict())
+        self.flow_dict[key] = value
+        self.update_policy()
+
+    def update_policy(self):
+        new_policy = self.user_policy
+        for key,value in self.flow_dict.items():
+            # proactive policies
+            if value[0]:
+                new_policy = new_policy + value[1]
+            else:
+                new_policy = new_policy + value[2]
+            # reactive policies
+            for link,pols in value[3].items():
+                if link in self.current_failures:
+                    new_policy = new_policy + pols
+        self.policy = new_policy
 
     def install_backup_paths(self, pkt):
         with self.lock:
-            new_policy = self.user_policy
-            # iterating over all flow and corresponding handlers in the table
-            # key=(flow, source, goal) & value=(policy, flag, proactive_pol, reactive_pol)
-            # flag => whether back up paths for the flow are installed already
             for key,value in self.flow_dict.items():
                 # if back up policy is already not installed
-                if value[1]:
+                if value[0]:
                     try:
                         flag = True
                         for x,y in key[0].map.iteritems():
@@ -91,49 +100,33 @@ class ft(DynamicPolicy):
                     # if pkt corresponds to current flow
                     if flag:
                         current_path = self.compute_current_path(pkt, key[2])
-                        # if unable to compute backup path => skip
-                        if current_path != []:
-                            # now we have the current path and topology, we
-                            #  compute back up paths and then install some of
-                            #  them. we also store them along with the rest
-                            #  the entries which we install after a link failure
+                        if current_path:
                             value = self.compute_backup_path(current_path, key[0])
-                            # install proactive rules
-                            new_policy = new_policy + value[2]
                             # removing handlers for the packet
-                            self.flow_dict[key] = (value[0], False) + value[2:]
-                    else:
-                        new_policy = new_policy + value[0]
-                # make sure proactive policies are there
-                else:
-                    new_policy = new_policy + value[2]
-
-                # reactive policies
-                for link,pols in value[3].items():
-                    if link in self.current_failures:
-                        new_policy = new_policy + pols
-            self.policy = new_policy
+                            self.flow_dict[key] = (False, value[1]) + value[2:]
+            self.update_policy()
 
     def set_network(self, network):
         with self.lock:
-            if self.last_topology is not None:
-                diff_topo = Topology.difference(self.last_topology, network.topology)
-                if diff_topo is not None and len(diff_topo.edges()) == 1:
+            if self.ftopology:
+                diff_topo = Topology.difference(self.ftopology, network.topology)
+                if diff_topo and len(diff_topo.edges()) == 1:
                     failed_link = diff_topo.edges()[0]
                     print "link {} has failed".format(failed_link)
                     if failed_link not in self.current_failures:
                         self.current_failures.update([tuple(sorted(failed_link))])
-
-                        # install reactive flow tables entries
-                        for key,value in self.flow_dict.items():
-                            for link,pols in value[3].items():
-                                if link == failed_link or link == failed_link[::-1]:
-                                    self.policy = self.policy + pols
-                elif diff_topo is None:
-                    print "no link failed in this case"
                 else:
-                    wn.warn("we don't handle this case as of now")
-            self.last_topology = network.topology
+                    # if a failed link comes back up
+                    diff_topo = Topology.difference(network.topology, self.ftopology)
+                    if diff_topo and len(diff_topo.edges()) == 1:
+                        up_link = diff_topo.edges()[0]
+                        print "link {} has compe up back".format(up_link)
+                        if up_link in self.current_failures:
+                            self.current_failures.discard(up_link)
+                    else:
+                        wn.warn("we don't handle this case as of now")
+            self.ftopology = network.topology
+            self.update_policy()
 
     # helper functions
     def compute_current_path(self, pkt, goal):
@@ -147,7 +140,7 @@ class ft(DynamicPolicy):
                     new_pkt = list(cpkts)[0]
                 else:
                     return []
-                next_switch = self.last_topology.node[pkt["switch"]]["ports"][new_pkt["outport"]].linked_to
+                next_switch = self.ftopology.node[pkt["switch"]]["ports"][new_pkt["outport"]].linked_to
                 in_port = int(str(next_switch).split('[')[1].split(']')[0])
                 next_switch = int(str(next_switch).split('[')[0])
                 if next_switch is None:
@@ -178,15 +171,15 @@ class ft(DynamicPolicy):
                 result.append(clink)
         return result
 
-    def find_covering_paths(self, current_path):
-        total_link_count = len(current_path) - 1
-        optimal_path_count = self.compute_optimal_path_count(current_path)
+    def find_covering_paths(self, cpath):
+        total_link_count = len(cpath) - 1
+        optimal_path_count = self.compute_optimal_path_count(cpath)
         total_tried_paths = 0
         may_be_more_paths = False
 
         ft_links = set()
         path_list = []
-        pathg = nx.all_simple_paths(self.last_topology, source=current_path[0], target=current_path[-1])
+        pathg = nx.all_simple_paths(self.ftopology, source=cpath[0], target=cpath[-1])
         for path in pathg:
             if len(ft_links) == total_link_count:
                 break
@@ -194,7 +187,7 @@ class ft(DynamicPolicy):
                 raise Exception("NOT POSSIBLE")
 
             old_length = len(ft_links)
-            flinks = self.compute_ft_links(path, current_path)
+            flinks = self.compute_ft_links(path, cpath)
             ft_links.update(flinks)
             if len(ft_links) != old_length:
                 path_list.append((path, flinks))
@@ -206,17 +199,17 @@ class ft(DynamicPolicy):
 
         # finding paths by simulating link failures
         if len(ft_links) < total_link_count and may_be_more_paths:
-            all_links = [(current_path[i], current_path[i+1]) if current_path[i]<current_path[i+1] \
-                else (current_path[i+1], current_path[i]) for i in range(len(current_path)-1)]
+            all_links = [(cpath[i], cpath[i+1]) if cpath[i]<cpath[i+1] \
+                else (cpath[i+1], cpath[i]) for i in range(len(cpath)-1)]
             all_links.difference_update(ft_links)
             for link in all_links:
-                graph = self.last_topology
+                graph = self.ftopology
                 graph.remove_edge(link)
-                new_path = nx.shortest_path(graph, current_path[0], current_path[-1])
-                path_list.append((new_path, self.compute_ft_links(new_path, current_path)))
+                new_path = nx.shortest_path(graph, cpath[0], cpath[-1])
+                path_list.append((new_path, self.compute_ft_links(new_path, cpath)))
 
         if len(ft_links) < total_link_count:
-            wn.warn("All links in the path {} cannot be made fault tolerant".format(current_path))
+            wn.warn("All links in {} cannot be made fault tolerant".format(cpath))
 
         # removing redundant links
         ft_links = set()
@@ -234,17 +227,16 @@ class ft(DynamicPolicy):
     #    a link fails
     #  *minimum total number of rules which are installed to make paths fault tolerant
     #  *backup paths should be as short as possible
-    def compute_backup_path(self, current_path, flow):
+    def compute_backup_path(self, cpath, flow):
         proactive_policies = None
         reactive_policies = {}
-        # finding all paths covering all the links in the path
-        covering_paths = self.find_covering_paths(current_path)
+        covering_paths = self.find_covering_paths(cpath)
 
         # conflict detection, populating the data structure
         # conflict => same incoming but different outgoing port
         # data structure: (current switch, incoming switch) -> {outgoing switch: set link}
         rules = {}
-        covering_paths.insert(0, (current_path, []))
+        covering_paths.insert(0, (cpath, []))
         for (path, links) in covering_paths:
             # -1 > A & -2 > B (end hosts)
             path.insert(0, -1)
@@ -265,44 +257,45 @@ class ft(DynamicPolicy):
             # conflicts, reactive
             for ow,links in d.items():
                 # when current switch is last switch
-                if cw == current_path[-2]:
+                if cw == cpath[-2] or not links:
                     continue
-                if links:
-                    rule = None
-                    for port,value in self.last_topology.node[cw]['ports'].items():
-                        # do not loop for None
-                        if value.linked_to:
-                            next_switch = int(str(value.linked_to).split('[')[0])
-                            if next_switch == ow:
-                                outport = port
-                            elif next_switch == iw:
-                                inport = port
-                    # when current switch is initial switch
-                    if iw < 0:
-                        if current_path[1] != cw:
-                            raise Exception("NOT POSSIBLE")
-                        rule = flow >> match(switch=cw) >> fwd(outport)
-                    else:
-                        rule = flow >> match(switch=cw, inport=inport) >> fwd(outport)
-                        rule = rule + (flow >> match(switch=cw, inport=outport) >> fwd(inport))
+                rule = None
+                for port,value in self.ftopology.node[cw]['ports'].items():
+                    # do not loop for None
+                    if value.linked_to:
+                        next_switch = int(str(value.linked_to).split('[')[0])
+                        if next_switch == ow:
+                            outport = port
+                        elif next_switch == iw:
+                            inport = port
+                # when current switch is initial switch
+                if iw < 0:
+                    if cpath[1] != cw:
+                        raise Exception("NOT POSSIBLE")
+                    rule = flow >> match(switch=cw) >> fwd(outport)
+                else:
+                    rule = flow >> match(switch=cw, inport=inport) >> fwd(outport)
+                    rule = rule + (flow >> match(switch=cw, inport=outport) >> fwd(inport))
 
-                    if len(d) > 1:
-                        # conflicts, reactive
-                        for link in links:
-                            if link in reactive_policies:
-                                reactive_policies[link] = reactive_policies[link] + rule
-                            else:
-                                reactive_policies[link] = rule
-                    else:
-                        # no conflicts, proactive
-                        if proactive_policies:
-                            proactive_policies = proactive_policies + rule
+                if len(d) > 1:
+                    # conflicts, reactive
+                    for link in links:
+                        if link in reactive_policies:
+                            reactive_policies[link] = reactive_policies[link] + rule
                         else:
-                            proactive_policies = rule
+                            reactive_policies[link] = rule
+                else:
+                    # no conflicts, proactive
+                    if proactive_policies:
+                        proactive_policies = proactive_policies + rule
+                    else:
+                        proactive_policies = rule
 
-        (a,b,c,d) = self.flow_dict[(flow, current_path[1], current_path[-2])]
+        (a,b,c,d) = self.flow_dict[(flow, cpath[1], cpath[-2])]
         result = (a, b, proactive_policies, reactive_policies)
-        self.flow_dict[(flow, current_path[1], current_path[-2])] = result
+        self.flow_dict[(flow, cpath[1], cpath[-2])] = result
+        del cpath[0]
+        del cpath[-1]
         return result
 
     #! find a proof for this
