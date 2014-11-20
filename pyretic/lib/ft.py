@@ -65,7 +65,7 @@ class ft(DynamicPolicy):
         #  packet corresponding to flow comes into the network
         query = packets(None)
         query.register_callback(self.install_backup_paths)
-        filtered_query = flow >> (matchA + matchB) >> query
+        filtered_query = (flow >> (matchA + matchB) >> query)
         key = (flow, source, goal)
         value = (True, filtered_query, set(), dict())
         self.flow_dict[key] = value
@@ -84,6 +84,7 @@ class ft(DynamicPolicy):
                 if link in self.current_failures:
                     new_policy = new_policy + pols
         self.policy = new_policy
+        print self.policy
 
     def install_backup_paths(self, pkt):
         with self.lock:
@@ -111,6 +112,7 @@ class ft(DynamicPolicy):
             if self.ftopology:
                 diff_topo = Topology.difference(self.ftopology, network.topology)
                 if diff_topo and len(diff_topo.edges()) == 1:
+                    # if a link has failed
                     failed_link = diff_topo.edges()[0]
                     print "link {} has failed".format(failed_link)
                     if failed_link not in self.current_failures:
@@ -124,37 +126,48 @@ class ft(DynamicPolicy):
                         if up_link in self.current_failures:
                             self.current_failures.discard(up_link)
                     else:
-                        wn.warn("we don't handle this case as of now")
+                        # we just pass the change to the user
+                        if isinstance(self.user_policy, DynamicPolicy):
+                            old_user_policy = self.user_policy.policy
+                            self.user_policy.set_network(network)
+                            new_user_policy = self.user_policy.policy
+                            if old_user_policy != new_user_policy:
+                                # flush entries
+                                for key,value in self.flow_dict.items():
+                                    self.flow_dict[key] = (True, Value[1], set(), dict())
             self.ftopology = network.topology
             self.update_policy()
 
     # helper functions
-    def compute_current_path(self, pkt, source, goal):
-        # if packet does not come from source
-        new_pkt = pkt
-        if pkt['switch'] != source:
-            new_pkt = new_pkt.modify(switch=source)
-        current_path = []
-        try:
-            while new_pkt["switch"]!=goal:
-                cpkts = self.user_policy.eval(new_pkt)
-                if len(cpkts) >= 1:
-                    pkt = new_pkt
-                    new_pkt = list(cpkts)[0]
-                else:
-                    return []
-                next_switch = self.ftopology.node[pkt["switch"]]["ports"][new_pkt["outport"]].linked_to
+    def compute_current_path_helper(self, pkt, goal):
+        if pkt["switch"] != goal:
+            cpkts = self.user_policy.eval(pkt)
+            if len(cpkts) == 0:
+                return []
+            for packet in cpkts:
+                next_switch = self.ftopology.node[pkt["switch"]]["ports"][packet["outport"]].linked_to
                 in_port = int(str(next_switch).split('[')[1].split(']')[0])
                 next_switch = int(str(next_switch).split('[')[0])
                 if next_switch is None:
                     return []
-                current_path.append(pkt["switch"])
-                new_pkt = new_pkt.modify(switch=next_switch)
-                new_pkt = new_pkt.modify(inport=in_port)
+                pkt = pkt.modify(switch=next_switch)
+                pkt = pkt.modify(inport=in_port)
+                cpath = self.compute_current_path_helper(pkt, goal)
+                if cpath:
+                    return ([packet["switch"]] + cpath)
+                else:
+                    return []
+        else:
+            return [goal]
+
+    def compute_current_path(self, pkt, source, goal):
+        # if packet did not come from source but goal
+        if pkt['switch'] != source:
+            pkt = pkt.modify(switch=source)
+        try:
+            return self.compute_current_path_helper(pkt, goal)
         except:
             return []
-        current_path.append(goal)
-        return current_path
 
     # with the convention of returning links with smaller node value first
     def compute_ft_links(self, path, current):
@@ -167,7 +180,7 @@ class ft(DynamicPolicy):
         for clink in link_current:
             flag = True
             for link in link_path:
-                if link == clink or link == clink[::-1]:
+                if link == clink:
                     flag = False
                     break
             if flag:
