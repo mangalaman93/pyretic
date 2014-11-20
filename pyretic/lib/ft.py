@@ -47,8 +47,10 @@ class ft(DynamicPolicy):
         self.lock = Lock()
         self.policy = self.user_policy
 
-    def addft(self, flow, source, goal):
-        if not isinstance(flow, match):
+    def addft(self, inflow, outflow, source, goal):
+        if not isinstance(inflow, match):
+            raise Exception("unknown flow type in addft function call")
+        if not isinstance(outflow, match):
             raise Exception("unknown flow type in addft function call")
 
         if isinstance(source, int):
@@ -65,8 +67,8 @@ class ft(DynamicPolicy):
         #  packet corresponding to flow comes into the network
         query = packets(None)
         query.register_callback(self.install_backup_paths)
-        filtered_query = (flow >> (matchA + matchB) >> query)
-        key = (flow, source, goal)
+        filtered_query = (inflow >> (matchA + matchB) >> query)
+        key = ((inflow, outflow) source, goal)
         value = (True, filtered_query, set(), dict())
         self.flow_dict[key] = value
         self.update_policy()
@@ -92,7 +94,8 @@ class ft(DynamicPolicy):
                 if value[0]:
                     try:
                         flag = True
-                        for x,y in key[0].map.iteritems():
+                        (inflow, outflow) = key[0]
+                        for x,y in inflow.map.iteritems():
                             flag = flag and (pkt[x] == y)
                     except:
                         flag = False
@@ -101,7 +104,7 @@ class ft(DynamicPolicy):
                     if flag:
                         current_path = self.compute_current_path(pkt, key[1], key[2])
                         if current_path:
-                            value = self.compute_backup_path(current_path, key[0])
+                            value = self.compute_backup_path(current_path, inflow, outflow)
                             # removing handlers for the packet
                             self.flow_dict[key] = (False, value[1]) + value[2:]
             self.update_policy()
@@ -242,7 +245,7 @@ class ft(DynamicPolicy):
     #    a link fails
     #  *minimum total number of rules which are installed to make paths fault tolerant
     #  *backup paths should be as short as possible
-    def compute_backup_path(self, cpath, flow):
+    def compute_backup_path(self, cpath, inflow, outflow):
         proactive_policies = None
         reactive_policies = {}
         covering_paths = self.find_covering_paths(cpath)
@@ -296,10 +299,14 @@ class ft(DynamicPolicy):
                 if iw < 0:
                     if cpath[1] != cw:
                         raise Exception("NOT POSSIBLE")
-                    rule = flow >> match(switch=cw) >> fwd(outport)
+                    rule = inflow >> match(switch=cw) >> fwd(outport)
+                    rule = rule + (outflow >> match(switch=cw) >> fwd(inport))
+                elif ow < 0:
+                    rule = outflow >> (match(switch=cw)) >> fwd(outport)
+                    rule = rule + (inflow >> match(switch=cw) >> fwd(outport))
                 else:
-                    rule = flow >> match(switch=cw, inport=inport) >> fwd(outport)
-                    rule = rule + (flow >> match(switch=cw, inport=outport) >> fwd(inport))
+                    rule = inflow >> match(switch=cw, inport=inport) >> fwd(outport)
+                    rule = rule + (outflow >> match(switch=cw, inport=outport) >> fwd(inport))
 
                 if len(d) > 1 or len(rules_rev[cw, ow]) > 1:
                     # conflicts, reactive
@@ -315,9 +322,9 @@ class ft(DynamicPolicy):
                     else:
                         proactive_policies = rule
 
-        (a,b,c,d) = self.flow_dict[(flow, cpath[1], cpath[-2])]
+        (a,b,c,d) = self.flow_dict[((inflow, outflow) cpath[1], cpath[-2])]
         result = (a, b, proactive_policies, reactive_policies)
-        self.flow_dict[(flow, cpath[1], cpath[-2])] = result
+        self.flow_dict[((inflow, outflow), cpath[1], cpath[-2])] = result
         return result
 
     # proof: http://en.wikipedia.org/wiki/Coupon_collector's_problem
