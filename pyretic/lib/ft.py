@@ -65,7 +65,7 @@ class ft(DynamicPolicy):
         #  packet corresponding to flow comes into the network
         query = packets(None)
         query.register_callback(self.install_backup_paths)
-        filtered_query = flow >> (matchA + matchB) >> query
+        filtered_query = (flow >> (matchA + matchB) >> query)
         key = (flow, source, goal)
         value = (True, filtered_query, set(), dict())
         self.flow_dict[key] = value
@@ -111,6 +111,7 @@ class ft(DynamicPolicy):
             if self.ftopology:
                 diff_topo = Topology.difference(self.ftopology, network.topology)
                 if diff_topo and len(diff_topo.edges()) == 1:
+                    # if a link has failed
                     failed_link = diff_topo.edges()[0]
                     print "link {} has failed".format(failed_link)
                     if failed_link not in self.current_failures:
@@ -124,37 +125,48 @@ class ft(DynamicPolicy):
                         if up_link in self.current_failures:
                             self.current_failures.discard(up_link)
                     else:
-                        wn.warn("we don't handle this case as of now")
+                        # we just pass the change to the user
+                        if isinstance(self.user_policy, DynamicPolicy):
+                            old_user_policy = self.user_policy.policy
+                            self.user_policy.set_network(network)
+                            new_user_policy = self.user_policy.policy
+                            if old_user_policy != new_user_policy:
+                                # flush entries
+                                for key,value in self.flow_dict.items():
+                                    self.flow_dict[key] = (True, value[1], set(), dict())
             self.ftopology = network.topology
             self.update_policy()
 
     # helper functions
-    def compute_current_path(self, pkt, source, goal):
-        # if packet does not come from source
-        new_pkt = pkt
-        if pkt['switch'] != source:
-            new_pkt = new_pkt.modify(switch=source)
-        current_path = []
-        try:
-            while new_pkt["switch"]!=goal:
-                cpkts = self.user_policy.eval(new_pkt)
-                if len(cpkts) >= 1:
-                    pkt = new_pkt
-                    new_pkt = list(cpkts)[0]
-                else:
-                    return []
-                next_switch = self.ftopology.node[pkt["switch"]]["ports"][new_pkt["outport"]].linked_to
+    def compute_current_path_helper(self, pkt, goal):
+        if pkt["switch"] != goal:
+            cpkts = self.user_policy.eval(pkt)
+            if len(cpkts) == 0:
+                return []
+            for packet in cpkts:
+                next_switch = self.ftopology.node[pkt["switch"]]["ports"][packet["outport"]].linked_to
                 in_port = int(str(next_switch).split('[')[1].split(']')[0])
                 next_switch = int(str(next_switch).split('[')[0])
                 if next_switch is None:
                     return []
-                current_path.append(pkt["switch"])
-                new_pkt = new_pkt.modify(switch=next_switch)
-                new_pkt = new_pkt.modify(inport=in_port)
+                pkt = pkt.modify(switch=next_switch)
+                pkt = pkt.modify(inport=in_port)
+                cpath = self.compute_current_path_helper(pkt, goal)
+                if cpath:
+                    return ([packet["switch"]] + cpath)
+                else:
+                    return []
+        else:
+            return [goal]
+
+    def compute_current_path(self, pkt, source, goal):
+        # if packet did not come from source but goal
+        if pkt['switch'] != source:
+            pkt = pkt.modify(switch=source)
+        try:
+            return self.compute_current_path_helper(pkt, goal)
         except:
             return []
-        current_path.append(goal)
-        return current_path
 
     # with the convention of returning links with smaller node value first
     def compute_ft_links(self, path, current):
@@ -167,7 +179,7 @@ class ft(DynamicPolicy):
         for clink in link_current:
             flag = True
             for link in link_path:
-                if link == clink or link == clink[::-1]:
+                if link == clink:
                     flag = False
                     break
             if flag:
@@ -237,8 +249,13 @@ class ft(DynamicPolicy):
 
         # conflict detection, populating the data structure
         # conflict => same incoming but different outgoing port
+        #          => same outgoing but different incoming port (for reverse path)*
         # data structure: (current switch, incoming switch) -> {outgoing switch: set link}
+        #               : (current switch, outgoing switch) -> {incoming switch}
+        # we keep another dictionary to make sure that the conflict* do not exist
+        #  for reverse path
         rules = {}
+        rules_rev = {}
         covering_paths.insert(0, (cpath, []))
         for (path, links) in covering_paths:
             # -1 > A & -2 > B (end hosts)
@@ -253,16 +270,20 @@ class ft(DynamicPolicy):
                 else:
                     rules[path[i], path[i-1]]= {path[i+1]: set(links)}
 
+                if (path[i], path[i+1]) in rules_rev:
+                    rules_rev[path[i], path[i+1]].update([path[i-1]])
+                else:
+                    rules_rev[path[i], path[i+1]]= set([path[i-1]])
+
         # storing rules
         for (cw, iw),d in rules.iteritems():
             inport = 0
             outport = 0
-            # conflicts, reactive
             for ow,links in d.items():
                 # when current switch is last switch
                 if cw == cpath[-2] or not links:
                     continue
-                rule = None
+                # otherwise calculating inport and outport
                 for port,value in self.ftopology.node[cw]['ports'].items():
                     # do not loop for None
                     if value.linked_to:
@@ -280,7 +301,7 @@ class ft(DynamicPolicy):
                     rule = flow >> match(switch=cw, inport=inport) >> fwd(outport)
                     rule = rule + (flow >> match(switch=cw, inport=outport) >> fwd(inport))
 
-                if len(d) > 1:
+                if len(d) > 1 or len(rules_rev[cw, ow]) > 1:
                     # conflicts, reactive
                     for link in links:
                         if link in reactive_policies:
@@ -297,11 +318,10 @@ class ft(DynamicPolicy):
         (a,b,c,d) = self.flow_dict[(flow, cpath[1], cpath[-2])]
         result = (a, b, proactive_policies, reactive_policies)
         self.flow_dict[(flow, cpath[1], cpath[-2])] = result
-        del cpath[0]
-        del cpath[-1]
         return result
 
-    #! find a proof for this
+    # proof: http://en.wikipedia.org/wiki/Coupon_collector's_problem
+    # maximizing the probability of collecting all the links
     def compute_optimal_path_count(self, current_path):
         n = len(current_path)
         return int(n * log(n))

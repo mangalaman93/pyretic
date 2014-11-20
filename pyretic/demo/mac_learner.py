@@ -68,9 +68,9 @@ class mac_learner(DynamicPolicy):
         self.forward = if_(match(dstmac=pkt['srcmac'],
                                 switch=pkt['switch']),
                           fwd(pkt['inport']),
-                          self.forward) 
+                          self.forward)
         self.update_policy()
-       
+
 
 def main():
     return mac_learner()
