@@ -42,7 +42,6 @@
 from pyretic.lib.corelib import *
 from pyretic.lib.std import *
 from pyretic.lib.query import *
-from pyretic.lib.ft import *
 
 class mac_learner(DynamicPolicy):
     """Standard MAC-learning logic"""
@@ -63,18 +62,16 @@ class mac_learner(DynamicPolicy):
     def update_policy(self):
         """Update the policy based on current forward and query policies"""
         self.policy = self.forward + self.query
-	ft_ = ft(self.policy)
-	ft_.addft(match(dstport=80,srcmac=EthAddr('00:00:00:00:00:01'),dstmac=EthAddr('00:00:00:00:00:02')), 1, 3)
-	ft_.addft(match(dstport=80,srcmac=EthAddr('00:00:00:00:00:01'),dstmac=EthAddr('00:00:00:00:00:02')), 2, 3)	
 
     def learn_new_MAC(self,pkt):
         """Update forward policy based on newly seen (mac,port)"""
         self.forward = if_(match(dstmac=pkt['srcmac'],
                                 switch=pkt['switch']),
                           fwd(pkt['inport']),
-                          self.forward) 
+                          self.forward)
         self.update_policy()
-       
 
 def main():
-    return mac_learner()
+	ft_ = ft(mac_learner())
+	ft_.addft(match(dstport=80,srcmac=EthAddr('00:00:00:00:00:01'),dstmac=EthAddr('00:00:00:00:00:02')), 1, 3)
+	ft_.addft(match(dstport=80,srcmac=EthAddr('00:00:00:00:00:01'),dstmac=EthAddr('00:00:00:00:00:02')), 2, 3)
