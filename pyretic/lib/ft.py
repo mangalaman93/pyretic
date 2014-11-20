@@ -84,7 +84,6 @@ class ft(DynamicPolicy):
                 if link in self.current_failures:
                     new_policy = new_policy + pols
         self.policy = new_policy
-        print self.policy
 
     def install_backup_paths(self, pkt):
         with self.lock:
@@ -134,7 +133,7 @@ class ft(DynamicPolicy):
                             if old_user_policy != new_user_policy:
                                 # flush entries
                                 for key,value in self.flow_dict.items():
-                                    self.flow_dict[key] = (True, Value[1], set(), dict())
+                                    self.flow_dict[key] = (True, value[1], set(), dict())
             self.ftopology = network.topology
             self.update_policy()
 
@@ -250,8 +249,13 @@ class ft(DynamicPolicy):
 
         # conflict detection, populating the data structure
         # conflict => same incoming but different outgoing port
+        #          => same outgoing but different incoming port (for reverse path)*
         # data structure: (current switch, incoming switch) -> {outgoing switch: set link}
+        #               : (current switch, outgoing switch) -> {incoming switch}
+        # we keep another dictionary to make sure that the conflict* do not exist
+        #  for reverse path
         rules = {}
+        rules_rev = {}
         covering_paths.insert(0, (cpath, []))
         for (path, links) in covering_paths:
             # -1 > A & -2 > B (end hosts)
@@ -266,16 +270,20 @@ class ft(DynamicPolicy):
                 else:
                     rules[path[i], path[i-1]]= {path[i+1]: set(links)}
 
+                if (path[i], path[i+1]) in rules_rev:
+                    rules_rev[path[i], path[i+1]].update([path[i-1]])
+                else:
+                    rules_rev[path[i], path[i+1]]= set([path[i-1]])
+
         # storing rules
         for (cw, iw),d in rules.iteritems():
             inport = 0
             outport = 0
-            # conflicts, reactive
             for ow,links in d.items():
                 # when current switch is last switch
                 if cw == cpath[-2] or not links:
                     continue
-                rule = None
+                # otherwise calculating inport and outport
                 for port,value in self.ftopology.node[cw]['ports'].items():
                     # do not loop for None
                     if value.linked_to:
@@ -293,7 +301,7 @@ class ft(DynamicPolicy):
                     rule = flow >> match(switch=cw, inport=inport) >> fwd(outport)
                     rule = rule + (flow >> match(switch=cw, inport=outport) >> fwd(inport))
 
-                if len(d) > 1:
+                if len(d) > 1 or len(rules_rev[cw, ow]) > 1:
                     # conflicts, reactive
                     for link in links:
                         if link in reactive_policies:
@@ -310,11 +318,10 @@ class ft(DynamicPolicy):
         (a,b,c,d) = self.flow_dict[(flow, cpath[1], cpath[-2])]
         result = (a, b, proactive_policies, reactive_policies)
         self.flow_dict[(flow, cpath[1], cpath[-2])] = result
-        del cpath[0]
-        del cpath[-1]
         return result
 
-    #! find a proof for this
+    # proof: http://en.wikipedia.org/wiki/Coupon_collector's_problem
+    # maximizing the probability of collecting all the links
     def compute_optimal_path_count(self, current_path):
         n = len(current_path)
         return int(n * log(n))
