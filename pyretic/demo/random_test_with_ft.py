@@ -8,7 +8,6 @@
 from pyretic.lib.corelib import *
 from pyretic.lib.std import *
 from pyretic.lib.ft import *
-from mac_learner import *
 
 def define_operator_policy():
 	default_policy1 = match(dstmac = EthAddr('00:00:00:00:00:02'), switch = 1) >> fwd(3)
@@ -23,4 +22,6 @@ def define_operator_policy():
 	return default_policy
 
 def main():
-	return mac_learner() + define_operator_policy()
+	ft_ = ft(define_operator_policy())
+	ft_.addft(match(dstport=80,srcmac=EthAddr('00:00:00:00:00:01'),dstmac=EthAddr('00:00:00:00:00:02')), 1, 4)
+	return ft_
