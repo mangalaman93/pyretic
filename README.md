@@ -54,11 +54,38 @@ h1 iperf -c h2 -p 80
 ```
 pyretic.py pyretic.demo.conflict.conflict_test_with_ft
 ```
-* Test with mininet again. Observe that even after the link goes down, the traffic flows from h1 to h2.
+* Test with mininet again. Observe that even after the link goes down, the traffic flows from h1 to h2. The traffic flows from the high bandwidth path.
 ```
 link s2 s3 up
 h1 iperf -c h2 -p 80
 link s2 s3 down
+h1 iperf -c h2 -p 80
+```
+
+## Demo 2 - Not full graph search
+* Start the controller 
+```
+cd ~/pyretic
+pyretic.py pyretic.demo.longpath.longpath_test
+```
+* Start mininet in the other terminal and execute the following commands. Observe that after the link goes down, the traffic does not flow from h1 to h2.
+```
+cd ~/pyretic
+sudo python pyretic/demo/longpath/longpathTopo.py 8 3 4
+h2 iperf -s -p 80 &
+h1 iperf -c h2 -p 80
+link s1 s4 down
+h1 iperf -c h2 -p 80
+```
+* Stop the controller and start another one with ft
+```
+pyretic.py pyretic.demo.longpath.longpath_test_with_ft
+```
+* Test with mininet again. Observe that even after the link goes down, the traffic flows from h1 to h2.
+```
+link s1 s4 up
+h1 iperf -c h2 -p 80
+link s1 s4 down
 h1 iperf -c h2 -p 80
 ```
 
