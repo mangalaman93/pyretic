@@ -1,121 +1,70 @@
-#!/usr/bin/python
+################################################################################
+# SDN course project, CS8803-SDN, Georgia Tech                                 #
+# authors: Aman Mangal(amanmangal@gatech.edu), Vaibhav Malkani, Pragya Agarwal #
+################################################################################
+# Free to use as long as the authors are notified                              #
+################################################################################
 
-"""
-Coursera:
-- Software Defined Networking (SDN) course
--- Network Virtualization: Network Topology
+from pyretic.lib.corelib import *
+from pyretic.lib.std import *
+from pyretic.lib.ft import *
 
-Professor: Nick Feamster
-Teaching Assistant: Arpit Gupta
-"""
-
-import inspect
-import os
-import atexit
-from mininet.net import Mininet
-from mininet.util import dumpNodeConnections
-from mininet.log import setLogLevel, info
-from mininet.cli import CLI
-from mininet.topo import Topo
-from mininet.link import TCLink
-from mininet.topo import SingleSwitchTopo
-from mininet.node import RemoteController
+def define_operator_policy():
 
 
-net = None
+        default_policy1 = if_(match(srcip = IPAddr('10.0.0.1'),dstip = IPAddr('10.0.0.3'), switch = 1), fwd(1), drop)
+        default_policy2 = if_(match(srcip = IPAddr('10.0.0.1'),dstip = IPAddr('10.0.0.3'), switch = 2), fwd(2), drop)
+        default_policy3 = if_(match(srcip = IPAddr('10.0.0.1'),dstip = IPAddr('10.0.0.3'), switch = 3), fwd(4), drop)
+        rdefault_policy1 = if_(match(srcip = IPAddr('10.0.0.3'),dstip = IPAddr('10.0.0.1'), switch = 1), fwd(3), drop)
+        rdefault_policy2 = if_(match(srcip = IPAddr('10.0.0.3'),dstip = IPAddr('10.0.0.1'), switch = 2), fwd(1), drop)
+        rdefault_policy3 = if_(match(srcip = IPAddr('10.0.0.3'),dstip = IPAddr('10.0.0.1'), switch = 3), fwd(1), drop)
 
-class FVTopo(Topo):
-    # credit: https://github.com/onstutorial/onstutorial/blob/master/flowvisor_scripts/flowvisor_topo.py
-    def __init__(self):
-        # Initialize topology
-        Topo.__init__(self)
 
-        # Create template host, switch, and link
-        hconfig = {'inNamespace':True}
-        http_link_config = {'bw': 1}
-        video_link_config = {'bw': 10}
-        host_link_config = {}
+        default_policy4 = if_(match(srcip = IPAddr('10.0.0.1'),dstip = IPAddr('10.0.0.4'), switch = 1), fwd(2), drop)
+        default_policy5 = if_(match(srcip = IPAddr('10.0.0.1'),dstip = IPAddr('10.0.0.4'), switch = 8), fwd(4), drop)
+        default_policy6 = if_(match(srcip = IPAddr('10.0.0.1'),dstip = IPAddr('10.0.0.4'), switch = 7), fwd(3), drop)
+        rdefault_policy4 = if_(match(srcip = IPAddr('10.0.0.4'),dstip = IPAddr('10.0.0.1'), switch = 1), fwd(3), drop)
+        rdefault_policy5 = if_(match(srcip = IPAddr('10.0.0.4'),dstip = IPAddr('10.0.0.1'), switch = 8), fwd(1), drop)
+        rdefault_policy6 = if_(match(srcip = IPAddr('10.0.0.4'),dstip = IPAddr('10.0.0.1'), switch = 7), fwd(2), drop)
 
-        # Create switch nodes
-        for i in range(10):
-            sconfig = {'dpid': "%016x" % (i+1)}
-            self.addSwitch('s%d' % (i+1), **sconfig)
 
-        # Create host nodes
-        for i in range(7):
-            self.addHost('h%d' % (i+1), **hconfig)
+        default_policy7 = if_(match(srcip = IPAddr('10.0.0.4'),dstip = IPAddr('10.0.0.2'), switch = 7), fwd(1), drop)
+        default_policy8 = if_(match(srcip = IPAddr('10.0.0.4'),dstip = IPAddr('10.0.0.2'), switch = 6), fwd(1), drop)
+        default_policy9 = if_(match(srcip = IPAddr('10.0.0.4'),dstip = IPAddr('10.0.0.2'), switch = 5), fwd(5), drop)
+        rdefault_policy7 = if_(match(srcip = IPAddr('10.0.0.2'),dstip = IPAddr('10.0.0.4'), switch = 7), fwd(3), drop)
+        rdefault_policy8 = if_(match(srcip = IPAddr('10.0.0.2'),dstip = IPAddr('10.0.0.4'), switch = 6), fwd(2), drop)
+        rdefault_policy9 = if_(match(srcip = IPAddr('10.0.0.2'),dstip = IPAddr('10.0.0.4'), switch = 5), fwd(4), drop)
 
-        # Add switch links
-        # Specified to the port numbers to avoid any port number consistency issue
+
+        default_policy10 = if_(match(srcip = IPAddr('10.0.0.2'),dstip = IPAddr('10.0.0.3'), switch = 5), fwd(1), drop)
+        default_policy11 = if_(match(srcip = IPAddr('10.0.0.2'),dstip = IPAddr('10.0.0.3'), switch = 4), fwd(1), drop)
+        default_policy12 = if_(match(srcip = IPAddr('10.0.0.2'),dstip = IPAddr('10.0.0.3'), switch = 3), fwd(4), drop)
+        rdefault_policy10 = if_(match(srcip = IPAddr('10.0.0.3'),dstip = IPAddr('10.0.0.2'), switch = 5), fwd(5), drop)
+        rdefault_policy11 = if_(match(srcip = IPAddr('10.0.0.3'),dstip = IPAddr('10.0.0.2'), switch = 4), fwd(3), drop)
+        rdefault_policy12 = if_(match(srcip = IPAddr('10.0.0.3'),dstip = IPAddr('10.0.0.2'), switch = 3), fwd(2), drop)
+
+
+        default_policy13 = if_(match(srcip = IPAddr('10.0.0.1'),dstip = IPAddr('10.0.0.5'), switch = 1), fwd(1), drop)
+        default_policy14 = if_(match(srcip = IPAddr('10.0.0.1'),dstip = IPAddr('10.0.0.5'), switch = 2), fwd(5), drop)
+        rdefault_policy13 = if_(match(srcip = IPAddr('10.0.0.5'),dstip = IPAddr('10.0.0.1'), switch = 1), fwd(3), drop)
+        rdefault_policy14 = if_(match(srcip = IPAddr('10.0.0.5'),dstip = IPAddr('10.0.0.1'), switch = 2), fwd(1), drop)
+
+        default_policy15 = if_(match(srcip = IPAddr('10.0.0.4'),dstip = IPAddr('10.0.0.6'), switch = 7), fwd(1), drop)
+        default_policy16 = if_(match(srcip = IPAddr('10.0.0.4'),dstip = IPAddr('10.0.0.6'), switch = 6), fwd(3), drop)
+        rdefault_policy15 = if_(match(srcip = IPAddr('10.0.0.6'),dstip = IPAddr('10.0.0.4'), switch = 7), fwd(3), drop)
+        rdefault_policy16 = if_(match(srcip = IPAddr('10.0.0.6'),dstip = IPAddr('10.0.0.4'), switch = 6), fwd(2), drop)
+
+        default_policy17 = if_(match(srcip = IPAddr('10.0.0.3'),dstip = IPAddr('10.0.0.7'), switch = 3), fwd(2), drop)
+        default_policy18 = if_(match(srcip = IPAddr('10.0.0.3'),dstip = IPAddr('10.0.0.7'), switch = 4), fwd(4), drop)
+        rdefault_policy17 = if_(match(srcip = IPAddr('10.0.0.7'),dstip = IPAddr('10.0.0.3'), switch = 3), fwd(4), drop)
+        rdefault_policy18 = if_(match(srcip = IPAddr('10.0.0.7'),dstip = IPAddr('10.0.0.3'), switch = 4), fwd(1), drop)
         
+ 
+        def_p =  default_policy1 +  default_policy2 +  default_policy3 +  default_policy4 + default_policy5 + default_policy6 +  default_policy7 +  default_policy8 +  default_policy9 + default_policy10 +  default_policy11 +  default_policy12 + default_policy13 +  default_policy14 + default_policy15 +  default_policy16  + default_policy17 +  default_policy18
+        rdef_p =  rdefault_policy1 +  rdefault_policy2 +  rdefault_policy3 +  rdefault_policy4 + rdefault_policy5+ rdefault_policy6 +  rdefault_policy7 +  rdefault_policy8 +  rdefault_policy9 + rdefault_policy10 +  rdefault_policy11 +  rdefault_policy12 + rdefault_policy13 +  rdefault_policy14 + rdefault_policy15 +  rdefault_policy16  + rdefault_policy17 +  rdefault_policy18
 
-        self.addLink('s1', 's2', port1=1, port2=1, **http_link_config)
-        self.addLink('s1', 's8', port1=2, port2=1, **http_link_config)
-      
-        self.addLink('s2', 's8', port1=3, port2=2, **http_link_config)
-        self.addLink('s2', 's9', port1=4, port2=1, **http_link_config)
-        self.addLink('s2', 's3', port1=2, port2=1, **http_link_config)
+        default_policy = def_p + rdef_p 
+	return default_policy
 
-        self.addLink('s3', 's9', port1=3, port2=2, **http_link_config)
-        self.addLink('s3', 's4', port1=2, port2=1, **http_link_config)
-
-
-        self.addLink('s4', 's10', port1=2, port2=1, **http_link_config)
-        self.addLink('s4', 's5', port1=3, port2=1, **http_link_config)
-
-
-        self.addLink('s5', 's10', port1=2, port2=2, **http_link_config)
-        self.addLink('s5', 's8', port1=3, port2=3, **http_link_config)
-        self.addLink('s5', 's6', port1=4, port2=1, **http_link_config)
-
-
-        self.addLink('s10', 's9', port1=3, port2=3, **http_link_config)
-
-        self.addLink('s6', 's7', port1=2, port2=1, **http_link_config)
-
-        self.addLink('s7', 's8', port1=2, port2=4, **http_link_config)
-
-
-        self.addLink('s1', 'h1', port1=3, port2=1, **http_link_config)
-        self.addLink('s3', 'h3', port1=4, port2=1, **http_link_config)
-        self.addLink('s5', 'h2', port1=5, port2=1, **http_link_config)
-        self.addLink('s7', 'h4', port1=3, port2=1, **http_link_config)
-        self.addLink('s2', 'h5', port1=5, port2=1, **http_link_config)
-        self.addLink('s6', 'h6', port1=3, port2=1, **http_link_config)
-        self.addLink('s4', 'h7', port1=4, port2=1, **http_link_config)
-
-        
-        
-        info( '\n*** printing and validating the ports running on each interface\n' )
-        
-
-
-def startNetwork():
-    info('** Creating Overlay network topology\n')
-    topo = FVTopo()
-    global net
-    net = Mininet(topo=topo, link = TCLink,
-                  controller=lambda name: RemoteController(name, ip='127.0.0.1'),
-                  listenPort=6633, autoSetMacs=True)
-
-    info('** Starting the network\n')
-    net.start()
-
-
-    info('** Running CLI\n')
-    CLI(net)
-
-
-def stopNetwork():
-    if net is not None:
-        info('** Tearing down Overlay network\n')
-        net.stop()
-
-if __name__ == '__main__':
-    # Force cleanup on exit by registering a cleanup function
-    atexit.register(stopNetwork)
-
-    # Tell mininet to print useful information
-    setLogLevel('info')
-    startNetwork()
-
+def main():
+	return define_operator_policy()
