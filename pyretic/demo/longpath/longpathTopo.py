@@ -11,6 +11,8 @@ from mininet.link import TCLink
 from mininet.topo import SingleSwitchTopo
 from mininet.node import RemoteController
 
+# sudo python longpath.py 8 3 4
+
 net = None
 
 class FVTopo(Topo):
@@ -46,7 +48,7 @@ class FVTopo(Topo):
             self.addLink('s1', 's%d' %(counter), port1=portnum, port2=1, **video_link_config)
             for j in range(k-1):
                  print "I AM HERE connecting %d " % counter
-                 self.addLink('s%d' % (counter), 's%d' %(counter+1), port1=2, port2=1, **video_link_config)
+                 self.addLink('s%d' % (counter), 's%d' %(counter+1), port1=2, port2=1, **http_link_config)
                  counter = counter +1
             self.addLink('s%d' % (counter), 's2', port1=2, port2=portnum, **video_link_config)
             portnum = portnum + 1
