@@ -68,23 +68,36 @@ class ft(DynamicPolicy):
         query = packets(None)
         query.register_callback(self.install_backup_paths)
         filtered_query = (inflow >> (matchA + matchB) >> query)
-        key = ((inflow, outflow) source, goal)
+        key = ((inflow, outflow), source, goal)
         value = (True, filtered_query, set(), dict())
         self.flow_dict[key] = value
         self.update_policy()
 
     def update_policy(self):
-        new_policy = self.user_policy
+        new_policy = None
         for key,value in self.flow_dict.items():
             # proactive policies
             if value[0]:
-                new_policy = new_policy + value[1]
+                if new_policy:
+                    new_policy = new_policy + value[1]
+                else:
+                    new_policy = value[1]
             else:
-                new_policy = new_policy + value[2]
+                if new_policy:
+                    new_policy = new_policy + value[2]
+                else:
+                    new_policy = value[2]
             # reactive policies
             for link,pols in value[3].items():
                 if link in self.current_failures:
-                    new_policy = new_policy + pols
+                    if new_policy:
+                        new_policy = new_policy + pols
+                    else:
+                        new_policy = pols
+        if new_policy:
+            new_policy = new_policy + self.user_policy
+        else:
+            new_policy = self.user_policy
         self.policy = new_policy
 
     def install_backup_paths(self, pkt):
@@ -284,17 +297,32 @@ class ft(DynamicPolicy):
             outport = 0
             for ow,links in d.items():
                 # when current switch is last switch
-                if cw == cpath[-2] or not links:
+                if not links:
                     continue
                 # otherwise calculating inport and outport
-                for port,value in self.ftopology.node[cw]['ports'].items():
-                    # do not loop for None
-                    if value.linked_to:
-                        next_switch = int(str(value.linked_to).split('[')[0])
-                        if next_switch == ow:
+                if iw > 0 or ow > 0:
+                    for port,value in self.ftopology.node[cw]['ports'].items():
+                        # do not loop for None
+                        if value.linked_to:
+                            next_switch = int(str(value.linked_to).split('[')[0])
+                            if next_switch == ow:
+                                outport = port
+                            elif next_switch == iw:
+                                inport = port
+
+                #! ONLY FOR DEMO PURPOSES (find another solution)
+                if outport == 0 and ow < 0:
+                    for port,value in self.ftopology.node[cw]['ports'].items():
+                        # do not loop for None
+                        if not value.linked_to:
                             outport = port
-                        elif next_switch == iw:
+
+                if inport == 0 and iw < 0:
+                    for port,value in self.ftopology.node[cw]['ports'].items():
+                        # do not loop for None
+                        if not value.linked_to:
                             inport = port
+
                 # when current switch is initial switch
                 if iw < 0:
                     if cpath[1] != cw:
@@ -302,7 +330,7 @@ class ft(DynamicPolicy):
                     rule = inflow >> match(switch=cw) >> fwd(outport)
                     rule = rule + (outflow >> match(switch=cw) >> fwd(inport))
                 elif ow < 0:
-                    rule = outflow >> (match(switch=cw)) >> fwd(outport)
+                    rule = outflow >> (match(switch=cw)) >> fwd(inport)
                     rule = rule + (inflow >> match(switch=cw) >> fwd(outport))
                 else:
                     rule = inflow >> match(switch=cw, inport=inport) >> fwd(outport)
@@ -322,7 +350,7 @@ class ft(DynamicPolicy):
                     else:
                         proactive_policies = rule
 
-        (a,b,c,d) = self.flow_dict[((inflow, outflow) cpath[1], cpath[-2])]
+        (a,b,c,d) = self.flow_dict[((inflow, outflow), cpath[1], cpath[-2])]
         result = (a, b, proactive_policies, reactive_policies)
         self.flow_dict[((inflow, outflow), cpath[1], cpath[-2])] = result
         return result
