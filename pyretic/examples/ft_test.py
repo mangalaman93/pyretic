@@ -19,7 +19,6 @@ def define_operator_policy():
 	return default_policy
 
 def main():
-	# ft_ = ft(define_operator_policy())
-	# ft_.addft(match(dstport=80), match(srcport=80), 1, 3)
-	# return ft_
-	return define_operator_policy()
+	ft_ = ft(define_operator_policy())
+	ft_.addft(match(dstport=80), match(srcport=80), 1, 3)
+	return ft_
