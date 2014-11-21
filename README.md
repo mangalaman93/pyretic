@@ -33,6 +33,10 @@ def main():
         return ft_
 ```
 
+# Resources
+* [presentaion slides](https://docs.google.com/presentation/d/1N9EVEuB2OxQNqZRKbTEL0ohV1LyfH-8UKIENoxj0V9o)
+* example run [video](http://youtu.be/O0ZTQYlPsaI)
+
 # Example run
 
 ## Demo 1 - Choose the path(s) minimizing total rules
@@ -88,5 +92,7 @@ h1 iperf -c h2 -p 80
 link s1 s4 down
 h1 iperf -c h2 -p 80
 ```
+
+
 
 ##
