@@ -43,20 +43,20 @@ pyretic.py pyretic.demo.conflict.conflict_test
 ```
 * Start mininet in the other terminal and execute the following commands. Observe that after the link goes down, the traffic does not flow from h1 to h2.
 ```
+cd ~/pyretic
 sudo mn --custom pyretic/demo/conflict/conflictTopo.py --topo mytopo --switch ovsk --link tc --controller=remote --mac
 h2 iperf -s -p 80 &
 h1 iperf -c h2 -p 80
 link s2 s3 down
 h1 iperf -c h2 -p 80
 ```
-* Start the controller with ft
+* Stop the controller and start another one with ft
 ```
 pyretic.py pyretic.demo.conflict.conflict_test_with_ft
 ```
-* Start mininet in the other terminal and execute the following commands. Observe that even after the link goes down, the traffic flows from h1 to h2.
+* Test with mininet again. Observe that even after the link goes down, the traffic flows from h1 to h2.
 ```
-sudo mn --custom pyretic/demo/conflict/conflictTopo.py --topo mytopo --switch ovsk --link tc --controller=remote --mac
-h2 iperf -s -p 80 &
+link s2 s3 up
 h1 iperf -c h2 -p 80
 link s2 s3 down
 h1 iperf -c h2 -p 80
