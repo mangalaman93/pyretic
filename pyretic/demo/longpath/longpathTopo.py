@@ -1,5 +1,3 @@
-#variable toplology
-
 import inspect
 import os
 import sys
@@ -36,32 +34,31 @@ class FVTopo(Topo):
 
         # Create host nodes
         for i in range(2):
-                self.addHost('h%d' % (i+1), **hconfig)
-        #self.addhost('h2', **hconfig)
+            self.addHost('h%d' % (i+1), **hconfig)
 
         # Add switch links
         # Specified to the port numbers to avoid any port number consistency issue
-
         self.addLink('s1', 'h1', port1=1, port2=1, **video_link_config)
-        counter = 4
-        portnum = 1
+        counter = 3
+        portnum = 2
         for i in range(b):
+            counter = counter + 1
             self.addLink('s1', 's%d' %(counter), port1=portnum, port2=1, **video_link_config)
             for j in range(k-1):
+                 print "I AM HERE connecting %d " % counter
                  self.addLink('s%d' % (counter), 's%d' %(counter+1), port1=2, port2=1, **video_link_config)
                  counter = counter +1
-            self.addLink('s%d' % (counter-1), 's2', port1=2, port2=portnum, **video_link_config)
+            self.addLink('s%d' % (counter), 's2', port1=2, port2=portnum, **video_link_config)
             portnum = portnum + 1
 
-
+        counter = counter + 1
         self.addLink('s1', 's%d' % (counter), port1=portnum, port2=1, **video_link_config)
-        for i in range(m):
+        for i in range(m-1):
             self.addLink('s%d' % (counter), 's%d' %(counter+1), port1=2, port2=1, **video_link_config)
             counter = counter + 1
-        self.addLink('s%d' % (counter-1), 's3', port1=2, port2=3, **video_link_config)
-        self.addLink('s3', 'h2', port1=2, port2=1, **video_link_config)
-        self.addLink('s2', 's3', port1=portnum, port2=1, **video_link_config)
-
+        self.addLink('s%d' % (counter), 's3', port1=2, port2=3, **video_link_config)
+        self.addLink('s3', 'h2', port1=1, port2=1, **video_link_config)
+        self.addLink('s2', 's3', port1=1, port2=2, **video_link_config)
 
         info( '\n*** printing and validating the ports running on each interface\n' )
 
@@ -76,16 +73,13 @@ def startNetwork(k,m,b):
     info('** Starting the network\n')
     net.start()
 
-
     info('** Running CLI\n')
     CLI(net)
-
 
 def stopNetwork():
     if net is not None:
         info('** Tearing down Overlay network\n')
         net.stop()
-
 
 if __name__ == '__main__':
     # Force cleanup on exit by registering a cleanup function
@@ -97,6 +91,5 @@ if __name__ == '__main__':
     m = int(sys.argv[2])
     b = int(sys.argv[3])
     startNetwork(k,m,b)
-
 
 topos = { 'mytopo': ( lambda: FVTopo() ) }
