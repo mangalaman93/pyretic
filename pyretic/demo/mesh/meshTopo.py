@@ -1,14 +1,5 @@
 #!/usr/bin/python
 
-"""
-Coursera:
-- Software Defined Networking (SDN) course
--- Network Virtualization: Network Topology
-
-Professor: Nick Feamster
-Teaching Assistant: Arpit Gupta
-"""
-
 import inspect
 import os
 import atexit
@@ -20,7 +11,6 @@ from mininet.topo import Topo
 from mininet.link import TCLink
 from mininet.topo import SingleSwitchTopo
 from mininet.node import RemoteController
-
 
 net = None
 
@@ -47,11 +37,9 @@ class FVTopo(Topo):
 
         # Add switch links
         # Specified to the port numbers to avoid any port number consistency issue
-        
-
         self.addLink('s1', 's2', port1=1, port2=1, **http_link_config)
         self.addLink('s1', 's8', port1=2, port2=1, **http_link_config)
-      
+
         self.addLink('s2', 's8', port1=3, port2=2, **http_link_config)
         self.addLink('s2', 's9', port1=4, port2=1, **http_link_config)
         self.addLink('s2', 's3', port1=2, port2=1, **http_link_config)
@@ -59,22 +47,16 @@ class FVTopo(Topo):
         self.addLink('s3', 's9', port1=3, port2=2, **http_link_config)
         self.addLink('s3', 's4', port1=2, port2=1, **http_link_config)
 
-
         self.addLink('s4', 's10', port1=2, port2=1, **http_link_config)
         self.addLink('s4', 's5', port1=3, port2=1, **http_link_config)
-
 
         self.addLink('s5', 's10', port1=2, port2=2, **http_link_config)
         self.addLink('s5', 's8', port1=3, port2=3, **http_link_config)
         self.addLink('s5', 's6', port1=4, port2=1, **http_link_config)
 
-
         self.addLink('s10', 's9', port1=3, port2=3, **http_link_config)
-
         self.addLink('s6', 's7', port1=2, port2=1, **http_link_config)
-
         self.addLink('s7', 's8', port1=2, port2=4, **http_link_config)
-
 
         self.addLink('s1', 'h1', port1=3, port2=1, **http_link_config)
         self.addLink('s3', 'h3', port1=4, port2=1, **http_link_config)
@@ -84,11 +66,7 @@ class FVTopo(Topo):
         self.addLink('s6', 'h6', port1=3, port2=1, **http_link_config)
         self.addLink('s4', 'h7', port1=4, port2=1, **http_link_config)
 
-        
-        
         info( '\n*** printing and validating the ports running on each interface\n' )
-        
-
 
 def startNetwork():
     info('** Creating Overlay network topology\n')
@@ -101,10 +79,8 @@ def startNetwork():
     info('** Starting the network\n')
     net.start()
 
-
     info('** Running CLI\n')
     CLI(net)
-
 
 def stopNetwork():
     if net is not None:
@@ -118,4 +94,3 @@ if __name__ == '__main__':
     # Tell mininet to print useful information
     setLogLevel('info')
     startNetwork()
-
